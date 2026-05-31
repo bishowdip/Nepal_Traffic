@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+  # ── Backend (FastAPI) ───────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nepal-traffic-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./nepal_traffic.db
+      - MOCK_MODE=true
+      - LOG_LEVEL=INFO
+      - CHECKPOINT_NAME=Thankot Checkpoint
+      - CHECKPOINT_LOCATION=Thankot, Chandragiri Municipality
+      - CONFIDENCE_THRESHOLD=0.65
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+      - backend_db:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Frontend (nginx) ────────────────────────────────────────────────────────
+  frontend:
+    image: nginx:1.25-alpine
+    container_name: nepal-traffic-frontend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # ── Redis (optional — WebSocket pub/sub for multi-instance scaling) ─────────
+  # Uncomment to enable Redis-backed WebSocket broadcasting
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: nepal-traffic-redis
+  #   ports:
+  #     - "6379:6379"
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+
+volumes:
+  backend_db:

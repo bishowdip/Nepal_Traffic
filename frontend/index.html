@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrafficAI Nepal — Vehicle Recognition System</title>
+  <link rel="stylesheet" href="styles/main.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════ SIDEBAR ═══════════════ -->
+<aside id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">🚗</div>
+    <h1>TrafficAI Nepal<span>Vehicle Recognition</span></h1>
+  </div>
+
+  <div class="checkpoint-selector">
+    <label>Active Checkpoint</label>
+    <select id="checkpoint-select">
+      <option value="">All Checkpoints</option>
+    </select>
+  </div>
+
+  <nav>
+    <div class="nav-item active" data-page="dashboard">
+      <span class="nav-icon">📊</span>
+      <span>Dashboard</span>
+    </div>
+    <div class="nav-item" data-page="vehicle-log">
+      <span class="nav-icon">📋</span>
+      <span>Vehicle Log</span>
+    </div>
+    <div class="nav-item" data-page="analytics">
+      <span class="nav-icon">📈</span>
+      <span>Analytics</span>
+    </div>
+    <div class="nav-item" data-page="alerts">
+      <span class="nav-icon">🚨</span>
+      <span>Alerts</span>
+      <span class="badge" id="alert-badge" style="display:none">0</span>
+    </div>
+    <div class="nav-item" data-page="registry">
+      <span class="nav-icon">🔍</span>
+      <span>Registry Search</span>
+    </div>
+    <div class="nav-item" data-page="settings">
+      <span class="nav-icon">⚙️</span>
+      <span>Settings</span>
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="theme-toggle" id="theme-toggle">
+      <span>🌙</span>
+      <div class="toggle-switch"></div>
+      <span class="theme-label">Dark Mode</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══════════════ MAIN ═══════════════ -->
+<main id="main">
+  <!-- Reconnect banner -->
+  <div class="reconnect-banner" id="reconnect-banner">
+    ⚠ WebSocket disconnected — Reconnecting...
+  </div>
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div>
+      <div class="topbar-title" id="topbar-title">Thankot Checkpoint</div>
+      <div class="topbar-meta" id="topbar-meta">Loading...</div>
+    </div>
+    <div id="live-badge" class="live-badge"><div class="dot"></div> LIVE</div>
+    <div class="topbar-stats">
+      <div class="topbar-stat">
+        <div class="val" id="stat-today">—</div>
+        <div class="lbl">Today</div>
+      </div>
+      <div class="topbar-stat">
+        <div class="val" id="stat-alerts">—</div>
+        <div class="lbl">Active Alerts</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ PAGE: DASHBOARD ════ -->
+  <section class="page active" id="page-dashboard">
+    <!-- Metric cards -->
+    <div class="metric-row">
+      <div class="metric-card accent-green">
+        <div class="metric-label">Total Today</div>
+        <div class="metric-value" id="m-total">—</div>
+        <div class="metric-sub">vehicles detected</div>
+      </div>
+      <div class="metric-card accent-blue">
+        <div class="metric-label">Per Hour</div>
+        <div class="metric-value" id="m-perhour">—</div>
+        <div class="metric-sub">last 60 minutes</div>
+      </div>
+      <div class="metric-card accent-amber">
+        <div class="metric-label">Plate Read Accuracy</div>
+        <div class="metric-value" id="m-accuracy">—</div>
+        <div class="metric-sub">OCR confidence avg</div>
+      </div>
+      <div class="metric-card accent-red">
+        <div class="metric-label">Active Alerts</div>
+        <div class="metric-value" id="m-alerts">—</div>
+        <div class="metric-sub">unresolved</div>
+      </div>
+    </div>
+
+    <!-- Main dashboard grid -->
+    <div class="dashboard-grid">
+      <!-- Live feed -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Live Vehicle Feed</h2>
+          <div class="live-badge"><div class="dot"></div> LIVE</div>
+        </div>
+        <div class="live-table-wrap">
+          <table id="live-feed-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Plate</th>
+                <th>Type</th>
+                <th>Ownership</th>
+                <th>Origin</th>
+                <th>Direction</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="live-feed-body">
+              <tr><td colspan="7" class="empty-state">Waiting for detections...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Right charts panel -->
+      <div class="dashboard-charts">
+        <div class="card">
+          <div class="card-header"><h2>Vehicle Types</h2></div>
+          <div class="card-body">
+            <div class="chart-container" style="height:200px">
+              <canvas id="chart-donut-types"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h2>Ownership Categories</h2></div>
+          <div class="card-body">
+            <div class="chart-container" style="height:200px">
+              <canvas id="chart-bar-ownership"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hourly sparkline -->
+    <div class="card">
+      <div class="card-header"><h2>Hourly Volume — Last 12 Hours</h2></div>
+      <div class="card-body">
+        <div class="chart-container" style="height:100px">
+          <canvas id="chart-sparkline"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ PAGE: VEHICLE LOG ════ -->
+  <section class="page" id="page-vehicle-log">
+    <div class="card" style="flex:1">
+      <div class="card-header">
+        <h2>Vehicle Log</h2>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline btn-sm" id="log-export-csv">⬇ CSV</button>
+          <button class="btn btn-outline btn-sm" id="log-export-pdf">⬇ PDF</button>
+        </div>
+      </div>
+      <div class="filter-bar" id="log-filter-bar">
+        <input type="date" id="f-start" />
+        <input type="date" id="f-end" />
+        <select id="f-type">
+          <option value="">All Types</option>
+          <option>car</option><option>motorcycle</option><option>bus</option>
+          <option>microbus</option><option>truck</option><option>van</option>
+          <option>tractor</option><option>other</option>
+        </select>
+        <select id="f-ownership">
+          <option value="">All Ownership</option>
+          <option>private</option><option>public</option><option>government</option>
+          <option>police</option><option>army</option><option>armed_police</option>
+          <option>diplomatic</option><option>un</option><option>ngo</option>
+        </select>
+        <select id="f-direction">
+          <option value="">Any Direction</option>
+          <option value="inbound">Inbound</option>
+          <option value="outbound">Outbound</option>
+        </select>
+        <label><input type="checkbox" id="f-flagged" /> Flagged only</label>
+        <input type="text" id="f-plate" placeholder="Search plate..." style="width:140px" />
+        <button class="btn btn-primary btn-sm" id="f-search-btn">Search</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="log-table">
+          <thead>
+            <tr>
+              <th>Time</th><th>Plate</th><th>Confidence</th><th>Type</th>
+              <th>Ownership</th><th>Origin</th><th>Dir.</th>
+              <th>DoTM</th><th>Fitness</th><th>Insurance</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="log-body">
+            <tr><td colspan="11" class="empty-state">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" id="log-pagination"></div>
+    </div>
+  </section>
+
+  <!-- ════ PAGE: ANALYTICS ════ -->
+  <section class="page" id="page-analytics">
+    <div class="filter-bar" style="background:transparent;padding:0">
+      <label>Date Range:</label>
+      <input type="date" id="ana-start" />
+      <input type="date" id="ana-end" />
+      <select id="ana-checkpoint">
+        <option value="">All Checkpoints</option>
+      </select>
+      <button class="btn btn-primary btn-sm" id="ana-load-btn">Load</button>
+    </div>
+
+    <div class="charts-row">
+      <div class="card">
+        <div class="card-header"><h2>Hourly Volume per Day</h2></div>
+        <div class="card-body"><div class="chart-container" style="height:220px"><canvas id="chart-hourly-line"></canvas></div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h2>Daily Breakdown by Type</h2></div>
+        <div class="card-body"><div class="chart-container" style="height:220px"><canvas id="chart-daily-stacked"></canvas></div></div>
+      </div>
+    </div>
+
+    <div class="charts-row">
+      <div class="card">
+        <div class="card-header"><h2>Top 15 Origin Cities</h2></div>
+        <div class="card-body"><div class="chart-container" style="height:280px"><canvas id="chart-origin-bar"></canvas></div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h2>Ownership Distribution</h2></div>
+        <div class="card-body"><div class="chart-container" style="height:280px"><canvas id="chart-ownership-pie"></canvas></div></div>
+      </div>
+    </div>
+
+    <div class="charts-row">
+      <div class="card">
+        <div class="card-header"><h2>Inbound vs Outbound</h2></div>
+        <div class="card-body"><div class="chart-container" style="height:200px"><canvas id="chart-inout-area"></canvas></div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h2>Traffic Heatmap (Day × Hour)</h2></div>
+        <div class="card-body" id="heatmap-wrap" style="overflow-x:auto;font-size:11px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ PAGE: ALERTS ════ -->
+  <section class="page" id="page-alerts">
+    <div class="card" style="padding:14px 18px;display:flex;gap:10px;align-items:center">
+      <label>Severity:</label>
+      <select id="alert-filter-sev">
+        <option value="">All</option>
+        <option>critical</option><option>warning</option><option>info</option>
+      </select>
+      <label>Type:</label>
+      <select id="alert-filter-type">
+        <option value="">All</option>
+        <option value="watchlist_match">Watchlist Match</option>
+        <option value="unregistered">Unregistered</option>
+        <option value="expired_fitness">Expired Fitness</option>
+        <option value="expired_insurance">Expired Insurance</option>
+        <option value="obscured_plate">Obscured Plate</option>
+        <option value="high_volume">High Volume</option>
+      </select>
+      <button class="btn btn-primary btn-sm" id="alert-load-btn">Load</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;flex:1">
+      <div>
+        <h3 style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--alert-crit)">🚨 Active Alerts</h3>
+        <div id="active-alerts-list">
+          <div class="empty-state">No active alerts</div>
+        </div>
+      </div>
+      <div>
+        <h3 style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--text-muted)">✅ Resolved Alerts</h3>
+        <div id="resolved-alerts-list">
+          <div class="empty-state">No resolved alerts</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ PAGE: REGISTRY ════ -->
+  <section class="page" id="page-registry">
+    <div>
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:12px">DoTM Registry Search</h2>
+      <div class="search-box-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="registry-search" placeholder="Type plate number (e.g. Ba 2 Kha 4521)..." />
+      </div>
+    </div>
+    <div id="registry-result"></div>
+    <div id="registry-sightings"></div>
+  </section>
+
+  <!-- ════ PAGE: SETTINGS ════ -->
+  <section class="page" id="page-settings">
+    <div class="settings-section">
+      <h3>System Settings</h3>
+      <div class="settings-row">
+        <div>
+          <label>Confidence Threshold</label>
+          <div class="desc">Minimum YOLO confidence to process a detection</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="range" id="conf-slider" min="30" max="95" value="65" />
+          <span id="conf-val" style="font-weight:700;min-width:36px">0.65</span>
+        </div>
+      </div>
+      <div class="settings-row">
+        <div>
+          <label>Mock Mode</label>
+          <div class="desc">Use synthetic detections (no camera required)</div>
+        </div>
+        <span id="mock-mode-badge" class="badge-alert info">Enabled</span>
+      </div>
+    </div>
+
+    <div class="settings-section" style="margin-top:16px">
+      <h3>Checkpoints</h3>
+      <div id="checkpoint-list-settings"></div>
+    </div>
+
+    <div class="settings-section" style="margin-top:16px">
+      <h3>Watchlist</h3>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input type="text" id="wl-plate" placeholder="Plate number" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)" />
+        <input type="text" id="wl-reason" placeholder="Reason" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)" />
+        <button class="btn btn-primary btn-sm" id="wl-add-btn">Add</button>
+      </div>
+      <div id="watchlist-list"></div>
+    </div>
+
+    <div class="settings-section" style="margin-top:16px">
+      <h3>System Info</h3>
+      <div id="system-info">Loading...</div>
+    </div>
+  </section>
+</main>
+
+<!-- ════ DETAIL SIDE PANEL ════ -->
+<div id="detail-panel">
+  <div class="detail-header">
+    <h3>Vehicle Detail</h3>
+    <button class="btn btn-outline btn-sm" id="detail-close">✕ Close</button>
+  </div>
+  <div class="detail-body" id="detail-body">
+    <div class="detail-plate" id="detail-plate">—</div>
+    <div class="detail-grid" id="detail-grid"></div>
+    <div class="detail-section-title">DoTM Registry</div>
+    <div id="detail-dotm"></div>
+    <div class="detail-section-title">Alerts</div>
+    <div id="detail-alerts"></div>
+  </div>
+</div>
+
+<!-- ════ SCRIPTS ════ -->
+<script src="src/main.js"></script>
+<script src="src/dashboard.js"></script>
+<script src="src/reports.js"></script>
+<script src="src/alerts.js"></script>
+<script src="src/registry.js"></script>
+</body>
+</html>
