@@ -145,12 +145,55 @@ For each camera, the detector will:
 1. Capture frames continuously
 2. Run YOLOv8 inference on each frame
 3. Crop vehicle bounding boxes
-4. Run PaddleOCR on the plate region
+4. Run real OCR on the plate region (EasyOCR by default — see below)
 5. Run Devanagari OCR on bus fronts
 6. Classify ownership from plate text
 7. Cross-reference DoTM registry
 8. Run alert engine
 9. Stream results over WebSocket to dashboard
+
+---
+
+## License Plate OCR
+
+Plate and Devanagari route reading is handled by `backend/services/ocr.py`,
+which supports three engines selected via the `OCR_ENGINE` setting:
+
+| `OCR_ENGINE` | Behaviour |
+|--------------|-----------|
+| `easyocr`    | **Real OCR (default for real mode).** Uses EasyOCR on PyTorch (Apple MPS / CUDA / CPU). Reuses the torch install ultralytics already needs; works on Python 3.13. |
+| `paddle`     | Real OCR via PaddleOCR (optional, heavier — see `requirements-ml.txt`). |
+| `mock`       | Synthetic plate/route text — no models required (default when `MOCK_MODE=true`). |
+| *(empty)*    | Auto: `mock` when `MOCK_MODE=true`, otherwise `easyocr`. |
+
+```bash
+# Install the real OCR engine
+pip install -r backend/requirements-ml.txt   # EasyOCR
+
+# Run the video processor with real plate reading on a recorded file
+python -m scripts.process_video --source "Road traffic video for object recognition.mp4" \
+    --skip-frames 5 --save-output annotated.mp4
+
+# Force mock OCR (fast, no models) regardless of mode
+python -m scripts.process_video --source traffic.mp4 --mock-ocr
+```
+
+Relevant `.env` knobs:
+
+```env
+OCR_ENGINE=easyocr        # easyocr | paddle | mock | (empty for auto)
+OCR_GPU=true              # use Apple MPS / CUDA when available
+OCR_PLATE_LANGS=en        # EasyOCR languages for plates
+OCR_ROUTE_LANGS=ne,en     # EasyOCR languages for Devanagari bus routes
+OCR_MIN_CONF=0.30         # drop OCR tokens below this confidence
+```
+
+> **Note on the bundled demo clip:** `Road traffic video for object recognition.mp4`
+> is 640×360 footage where vehicles are only ~20–30 px wide, so plates are not
+> physically legible to *any* OCR engine. Plate reading is verified instead by
+> `tests/test_ocr_real.py`, which runs the real EasyOCR engine on rendered
+> plate images. For real plate reads, use higher-resolution checkpoint cameras
+> where the plate occupies a meaningful pixel area.
 
 ---
 

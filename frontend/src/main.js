@@ -2,8 +2,12 @@
  * main.js — App shell: navigation, theme, checkpoints, WebSocket manager, global state
  */
 
-const API = 'http://localhost:8000/api';
-const WS_BASE = 'ws://localhost:8000';
+// Derive API + WebSocket base from the page origin so the dashboard works on
+// any host/port the backend is served from (it serves this frontend itself).
+// Override by setting window.API_ORIGIN before this script loads.
+const _ORIGIN = window.API_ORIGIN || window.location.origin;
+const API = `${_ORIGIN}/api`;
+const WS_BASE = _ORIGIN.replace(/^http/, 'ws');
 
 // ── Global state ──────────────────────────────────────────────────────────────
 window.App = {

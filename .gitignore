@@ -44,6 +44,9 @@ reports/*.csv
 *.avi
 *.mov
 
+# ── Local tooling (machine-specific) ──────────────────────────────────────────
+.claude/
+
 # ── Editor / OS ───────────────────────────────────────────────────────────────
 .DS_Store
 .idea/

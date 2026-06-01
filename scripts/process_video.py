@@ -89,52 +89,45 @@ def load_yolo(model_path: str = "yolov8n.pt"):
 # OCR loader (optional — graceful fallback)
 # ═════════════════════════════════════════════════════════════════════════════
 
-_ocr_engine   = None
-_ocr_dev_mode = False  # True when real OCR unavailable → use mock plates
+_ocr_dev_mode = False  # True → use synthetic plate text (set by --mock-ocr)
 
 
 def load_ocr():
-    """Try to load PaddleOCR. Returns None if unavailable (mock mode used)."""
-    global _ocr_engine, _ocr_dev_mode
+    """
+    Warm up the shared real OCR engine (EasyOCR by default) from
+    backend.services.ocr. The engine is chosen by $OCR_ENGINE, which run()
+    sets from the --mock-ocr flag. Degrades to mock text on any failure.
+    """
+    global _ocr_dev_mode
     try:
-        from paddleocr import PaddleOCR
-        _ocr_engine = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
-        log.info("✓ PaddleOCR loaded (English / plate mode)")
+        from backend.services import ocr as ocr_service
+        engine = ocr_service._resolve_engine()
+        if engine == "mock":
+            _ocr_dev_mode = True
+            log.info("OCR engine resolved to 'mock' — using synthetic plate text.")
+            return
+        # Trigger lazy model load now so the first frame isn't slow / silent.
+        ocr_service._preprocess_plate  # noqa: B018  (import sanity)
+        if engine == "easyocr":
+            ocr_service._get_easyocr_plate()
+        log.info(f"✓ Real OCR loaded via backend.services.ocr (engine={engine})")
     except Exception as e:
-        log.warning(f"PaddleOCR unavailable ({e}). Using mock plate text instead.")
+        log.warning(f"Real OCR unavailable ({e}). Using mock plate text instead.")
         _ocr_dev_mode = True
 
 
 def read_plate(roi: np.ndarray) -> tuple[str, float]:
     """
-    Run OCR on a plate ROI image.
-    Returns (plate_text, confidence).
-    Falls back to mock plate if OCR is unavailable.
+    Run OCR on a plate ROI image via the shared service.
+    Returns (plate_text, confidence). Falls back to mock plate if unavailable.
     """
-    if _ocr_dev_mode or _ocr_engine is None or roi.size == 0:
+    if _ocr_dev_mode or roi is None or roi.size == 0:
         return _mock_plate_text(), round(float(np.random.uniform(0.55, 0.92)), 3)
 
     try:
-        result = _ocr_engine.ocr(roi, cls=True)
-        if not result or not result[0]:
-            return "", 0.0
-
-        texts = []
-        confs = []
-        for line in result[0]:
-            if line and len(line) >= 2:
-                txt  = line[1][0].strip()
-                conf = float(line[1][1])
-                if txt:
-                    texts.append(txt)
-                    confs.append(conf)
-
-        if not texts:
-            return "", 0.0
-
-        plate_text = " ".join(texts)
-        avg_conf   = sum(confs) / len(confs)
-        return plate_text, round(avg_conf, 3)
+        from backend.services import ocr as ocr_service
+        result = ocr_service.parse_plate(roi)
+        return result.get("text", ""), float(result.get("confidence", 0.0))
     except Exception as e:
         log.debug(f"OCR error: {e}")
         return "", 0.0
@@ -145,11 +138,11 @@ def read_route_devanagari(roi: np.ndarray) -> tuple[str, str, str]:
     Read Devanagari route text from the front panel of a bus.
     Returns (raw_text, origin_city, destination_city).
     """
-    if _ocr_dev_mode or _ocr_engine is None or roi.size == 0:
+    if _ocr_dev_mode or roi is None or roi.size == 0:
         return "", "", ""
 
     try:
-        # Import the route parser from the existing service
+        # Reuse the Devanagari route parser from the shared service
         from backend.services.ocr import parse_route_text
         result = parse_route_text(roi)
         return result.get("raw_text", ""), result.get("origin", ""), result.get("destination", "")
@@ -465,12 +458,15 @@ async def run(args):
     # ── Load models ───────────────────────────────────────────────────────────
     model = load_yolo(args.model)
 
-    if not args.mock_ocr:
-        load_ocr()
-    else:
-        global _ocr_dev_mode
+    global _ocr_dev_mode
+    if args.mock_ocr:
+        os.environ["OCR_ENGINE"] = "mock"
         _ocr_dev_mode = True
         log.info("Mock OCR enabled — using synthetic plate text")
+    else:
+        # Default real engine for video processing is EasyOCR (reuses torch).
+        os.environ.setdefault("OCR_ENGINE", "easyocr")
+        load_ocr()
 
     # ── Open video source ─────────────────────────────────────────────────────
     cap = cv2.VideoCapture(source)
