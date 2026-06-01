@@ -1,5 +1,14 @@
-# ── OPTIONAL: Real OCR — requires Python ≤ 3.11 (use conda env or Docker) ───
-# Install ONLY if you have Python 3.10 or 3.11:
+# ── Real OCR engines (optional) ───────────────────────────────────────────────
+# Install for real license-plate / Devanagari route reading:
 #   pip install -r backend/requirements-ml.txt
-paddlepaddle>=3.0.0
-paddleocr>=2.8.0
+#
+# EasyOCR is the default engine (OCR_ENGINE=easyocr). It reuses the PyTorch
+# install that ultralytics already pulls in, runs on Apple MPS / CUDA / CPU,
+# and works on Python 3.13. Recommended.
+easyocr>=1.7.0
+
+# ── PaddleOCR (alternative engine, OCR_ENGINE=paddle) ─────────────────────────
+# Heavier and finicky on macOS arm64 / Python 3.13. Only enable if you
+# specifically need it and have a compatible environment (Python ≤ 3.11).
+# paddlepaddle>=3.0.0
+# paddleocr>=2.8.0

@@ -1,13 +1,24 @@
 """
 OCR service for Nepal license plates and Devanagari bus route text.
-Uses PaddleOCR in real mode; returns mock results in MOCK_MODE.
+
+Engines (selected via settings.OCR_ENGINE / $OCR_ENGINE):
+  • "easyocr" — real OCR via EasyOCR (reuses PyTorch + Apple MPS / CUDA).
+  • "paddle"  — real OCR via PaddleOCR (optional, only if installed).
+  • "mock"    — synthetic plates / routes (no models required).
+  • ""        — auto: "mock" when MOCK_MODE is on, otherwise "easyocr".
+
+Real OCR runs whenever a genuine image is supplied, independent of MOCK_MODE
+(which only governs whether *detections* are synthetic). If the chosen engine
+fails to load, the service degrades gracefully to mock output.
 """
 import logging
+import os
 import re
 from typing import Optional
 import numpy as np
 
 from backend.config import settings
+from backend.services.classifier import normalize_plate_text
 
 logger = logging.getLogger(__name__)
 
@@ -52,31 +63,110 @@ CITY_MAP: dict[str, str] = {
 
 ROMAN_CITY_MAP: dict[str, str] = {v.lower(): v for v in CITY_MAP.values()}
 
-_ocr_en = None
-_ocr_dev = None
+
+# ── Engine selection ──────────────────────────────────────────────────────────
+
+def _resolve_engine() -> str:
+    """Resolve the active OCR engine, honouring $OCR_ENGINE then settings."""
+    engine = (os.getenv("OCR_ENGINE") or settings.OCR_ENGINE or "").strip().lower()
+    if engine in ("easyocr", "paddle", "mock"):
+        return engine
+    return "mock" if settings.MOCK_MODE else "easyocr"
 
 
-def _get_ocr_en():
-    global _ocr_en
-    if _ocr_en is None and not settings.MOCK_MODE:
+# ── EasyOCR backend ───────────────────────────────────────────────────────────
+
+_easyocr_plate = None
+_easyocr_route = None
+_easyocr_failed = False
+
+
+def _get_easyocr(langs: list[str]):
+    """Build an EasyOCR reader for the given languages (raises on failure)."""
+    import easyocr
+    return easyocr.Reader(langs, gpu=settings.OCR_GPU)
+
+
+def _get_easyocr_plate():
+    global _easyocr_plate, _easyocr_failed
+    if _easyocr_plate is None and not _easyocr_failed:
+        try:
+            langs = settings.ocr_plate_lang_list
+            _easyocr_plate = _get_easyocr(langs)
+            logger.info(f"EasyOCR plate reader loaded (langs={langs}, gpu={settings.OCR_GPU}).")
+        except Exception as e:
+            logger.warning(f"EasyOCR plate init failed: {e}. Falling back to mock plates.")
+            _easyocr_failed = True
+    return _easyocr_plate
+
+
+def _get_easyocr_route():
+    global _easyocr_route, _easyocr_failed
+    if _easyocr_route is None and not _easyocr_failed:
+        try:
+            langs = settings.ocr_route_lang_list
+            _easyocr_route = _get_easyocr(langs)
+            logger.info(f"EasyOCR route reader loaded (langs={langs}, gpu={settings.OCR_GPU}).")
+        except Exception as e:
+            logger.warning(f"EasyOCR route init failed: {e}. Falling back to mock routes.")
+            _easyocr_failed = True
+    return _easyocr_route
+
+
+# ── PaddleOCR backend (optional) ──────────────────────────────────────────────
+
+_paddle_en = None
+_paddle_dev = None
+
+
+def _get_paddle(lang: str):
+    global _paddle_en, _paddle_dev
+    cache = "_paddle_en" if lang == "en" else "_paddle_dev"
+    reader = globals()[cache]
+    if reader is None:
         try:
             from paddleocr import PaddleOCR
-            _ocr_en = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
+            reader = PaddleOCR(use_angle_cls=True, lang=lang, show_log=False)
+            globals()[cache] = reader
         except Exception as e:
-            logger.warning(f"PaddleOCR (en) init failed: {e}")
-    return _ocr_en
+            logger.warning(f"PaddleOCR ({lang}) init failed: {e}")
+    return reader
 
 
-def _get_ocr_dev():
-    global _ocr_dev
-    if _ocr_dev is None and not settings.MOCK_MODE:
-        try:
-            from paddleocr import PaddleOCR
-            # "nepali" may not exist in all versions; fall back to "en" with unicode support
-            _ocr_dev = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
-        except Exception as e:
-            logger.warning(f"PaddleOCR (devanagari) init failed: {e}")
-    return _ocr_dev
+# ── Plate image preprocessing ─────────────────────────────────────────────────
+
+def _preprocess_plate(image: np.ndarray) -> np.ndarray:
+    """
+    Boost a (usually small) plate crop for OCR: upscale, grayscale, CLAHE.
+    Returns a single-channel image; falls back to the original on any error.
+    """
+    try:
+        import cv2
+    except Exception:
+        return image
+    if image is None or image.size == 0:
+        return image
+
+    img = image
+    h, w = img.shape[:2]
+    longest = max(h, w)
+    # Upscale small crops so glyphs are tall enough for the recognizer.
+    if longest < 400:
+        scale = min(4.0, 400.0 / max(longest, 1))
+        img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+    try:
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        gray = clahe.apply(gray)
+    except Exception:
+        pass
+    return gray
+
+
+def _clean_token(text: str) -> str:
+    """Uppercase and strip stray punctuation from a recognized plate token."""
+    return re.sub(r"[^A-Za-z0-9]", "", text).upper()
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -86,26 +176,57 @@ def parse_plate(image: np.ndarray) -> dict:
     Run OCR on a plate image.
     Returns: { text: str, confidence: float, bounding_box: list }
     """
-    if settings.MOCK_MODE or image is None:
+    engine = _resolve_engine()
+    if engine == "mock" or image is None:
         return _mock_plate()
 
-    ocr = _get_ocr_en()
+    if engine == "easyocr":
+        return _parse_plate_easyocr(image)
+    if engine == "paddle":
+        return _parse_plate_paddle(image)
+    return _mock_plate()
+
+
+def _parse_plate_easyocr(image: np.ndarray) -> dict:
+    reader = _get_easyocr_plate()
+    if reader is None:
+        return _mock_plate()
+    empty = {"text": "", "confidence": 0.0, "bounding_box": []}
+    try:
+        proc = _preprocess_plate(image)
+        results = reader.readtext(proc, detail=1, paragraph=False)
+        # results: list of (bbox, text, conf)
+        toks = []
+        for bbox, text, conf in results:
+            cleaned = _clean_token(text)
+            if cleaned and float(conf) >= settings.OCR_MIN_CONF:
+                # left edge x of the token box, for reading order
+                left_x = min(p[0] for p in bbox)
+                toks.append((left_x, cleaned, float(conf), bbox))
+        if not toks:
+            return empty
+        toks.sort(key=lambda t: t[0])  # left → right
+        raw_text = " ".join(t[1] for t in toks)
+        text = normalize_plate_text(raw_text)
+        conf = round(sum(t[2] for t in toks) / len(toks), 3)
+        return {"text": text, "confidence": conf, "bounding_box": toks[0][3]}
+    except Exception as e:
+        logger.error(f"EasyOCR plate error: {e}")
+        return empty
+
+
+def _parse_plate_paddle(image: np.ndarray) -> dict:
+    ocr = _get_paddle("en")
     if ocr is None:
         return _mock_plate()
-
     try:
         result = ocr.ocr(image, cls=True)
         if not result or not result[0]:
             return {"text": "", "confidence": 0.0, "bounding_box": []}
-
-        # Pick the highest-confidence line
         best = max(result[0], key=lambda r: r[1][1] if r and r[1] else 0)
-        text = best[1][0]
-        conf = float(best[1][1])
-        bbox = best[0]
-        return {"text": text, "confidence": conf, "bounding_box": bbox}
+        return {"text": best[1][0], "confidence": float(best[1][1]), "bounding_box": best[0]}
     except Exception as e:
-        logger.error(f"Plate OCR error: {e}")
+        logger.error(f"Paddle plate OCR error: {e}")
         return {"text": "", "confidence": 0.0, "bounding_box": []}
 
 
@@ -114,25 +235,35 @@ def parse_route_text(image: np.ndarray) -> dict:
     Run Devanagari OCR on the front panel of a bus.
     Returns: { raw_text: str, origin: str, destination: str }
     """
-    if settings.MOCK_MODE or image is None:
+    engine = _resolve_engine()
+    if engine == "mock" or image is None:
         return _mock_route()
 
-    ocr = _get_ocr_dev()
-    if ocr is None:
-        return _mock_route()
-
+    empty = {"raw_text": "", "origin": "", "destination": ""}
     try:
-        result = ocr.ocr(image, cls=True)
-        if not result or not result[0]:
-            return {"raw_text": "", "origin": "", "destination": ""}
+        if engine == "easyocr":
+            reader = _get_easyocr_route()
+            if reader is None:
+                return _mock_route()
+            results = reader.readtext(_preprocess_plate(image), detail=1, paragraph=False)
+            lines = [text for _, text, conf in results if float(conf) >= settings.OCR_MIN_CONF]
+        elif engine == "paddle":
+            ocr = _get_paddle("en")
+            if ocr is None:
+                return _mock_route()
+            result = ocr.ocr(image, cls=True)
+            if not result or not result[0]:
+                return empty
+            lines = [r[1][0] for r in result[0] if r and r[1]]
+        else:
+            return _mock_route()
 
-        lines = [r[1][0] for r in result[0] if r and r[1]]
         raw_text = " ".join(lines)
         origin, destination = _parse_route_cities(raw_text)
         return {"raw_text": raw_text, "origin": origin, "destination": destination}
     except Exception as e:
         logger.error(f"Route OCR error: {e}")
-        return {"raw_text": "", "origin": "", "destination": ""}
+        return empty
 
 
 # ── Route city parser ─────────────────────────────────────────────────────────

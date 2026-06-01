@@ -1,6 +1,7 @@
 # ── Core API framework ────────────────────────────────────────────────────────
-fastapi>=0.115.0
+fastapi>=0.115.6             # >=0.115.6 pulls a patched Starlette (CVE-2024-47874)
 uvicorn[standard]>=0.30.0
+starlette>=0.40.0            # DoS via multipart form parsing (CVE-2024-47874)
 
 # ── Database ──────────────────────────────────────────────────────────────────
 sqlalchemy[asyncio]>=2.0.36
@@ -9,16 +10,17 @@ aiosqlite>=0.20.0
 # ── Validation & config ───────────────────────────────────────────────────────
 pydantic>=2.10.0
 pydantic-settings>=2.6.0
-python-multipart>=0.0.9
+python-multipart>=0.0.18     # DoS in multipart parser (CVE-2024-53981)
 python-dotenv>=1.0.1
 
 # ── Image processing ──────────────────────────────────────────────────────────
-pillow>=10.0.0
+pillow>=10.3.0               # code exec (CVE-2023-50447) + buffer overflow (CVE-2024-28219)
 numpy>=1.26.0
 opencv-python-headless>=4.8.0
 
 # ── ML / AI ───────────────────────────────────────────────────────────────────
-ultralytics>=8.2.0            # YOLOv8 — works on Python 3.13
+ultralytics>=8.3.50          # avoid Dec-2024 supply-chain-compromised 8.3.41–8.3.46
+                             # (works on Python 3.13)
 
 # ── Data & reporting ─────────────────────────────────────────────────────────
 pandas>=2.0.0

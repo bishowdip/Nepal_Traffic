@@ -249,7 +249,8 @@ if [[ ! -f "$ENV_FILE" ]]; then
 DATABASE_URL=sqlite+aiosqlite:///./nepal_traffic.db
 MOCK_MODE=true
 CAMERA_SOURCES=
-DOTM_API_KEY=mock-dotm-key-nepal-2024
+# Set DOTM_API_KEY to your real DoTM registry key (leave blank for mock mode).
+DOTM_API_KEY=
 CONFIDENCE_THRESHOLD=0.65
 CHECKPOINT_NAME=Thankot Checkpoint
 CHECKPOINT_LOCATION=Thankot, Chandragiri Municipality, Kathmandu

@@ -61,9 +61,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# A wildcard origin ("*") together with allow_credentials=True is insecure and
+# is rejected by browsers. Restrict to the explicitly configured origins.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list + ["*"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
