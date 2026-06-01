@@ -8,7 +8,7 @@ sqlalchemy[asyncio]>=2.0.36
 aiosqlite>=0.20.0
 
 # ── Validation & config ───────────────────────────────────────────────────────
-pydantic>=2.10.0
+pydantic>=2.13.4
 pydantic-settings>=2.6.0
 python-multipart>=0.0.18     # DoS in multipart parser (CVE-2024-53981)
 python-dotenv>=1.0.1
