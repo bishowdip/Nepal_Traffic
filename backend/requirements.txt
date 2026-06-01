@@ -19,7 +19,7 @@ numpy>=1.26.0
 opencv-python-headless>=4.8.0
 
 # ── ML / AI ───────────────────────────────────────────────────────────────────
-ultralytics>=8.3.50          # avoid Dec-2024 supply-chain-compromised 8.3.41–8.3.46
+ultralytics>=8.4.58          # avoid Dec-2024 supply-chain-compromised 8.3.41–8.3.46
                              # (works on Python 3.13)
 
 # ── Data & reporting ─────────────────────────────────────────────────────────
