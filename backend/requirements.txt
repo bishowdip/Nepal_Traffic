@@ -1,5 +1,5 @@
 # ── Core API framework ────────────────────────────────────────────────────────
-fastapi>=0.115.6             # >=0.115.6 pulls a patched Starlette (CVE-2024-47874)
+fastapi>=0.136.3             # >=0.115.6 pulls a patched Starlette (CVE-2024-47874)
 uvicorn[standard]>=0.30.0
 starlette>=0.40.0            # DoS via multipart form parsing (CVE-2024-47874)
 
