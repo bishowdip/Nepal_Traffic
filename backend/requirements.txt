@@ -11,7 +11,7 @@ aiosqlite>=0.20.0
 pydantic>=2.10.0
 pydantic-settings>=2.6.0
 python-multipart>=0.0.18     # DoS in multipart parser (CVE-2024-53981)
-python-dotenv>=1.0.1
+python-dotenv>=1.2.2
 
 # ── Image processing ──────────────────────────────────────────────────────────
 pillow>=10.3.0               # code exec (CVE-2023-50447) + buffer overflow (CVE-2024-28219)
