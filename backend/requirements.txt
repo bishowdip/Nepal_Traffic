@@ -23,7 +23,7 @@ ultralytics>=8.3.50          # avoid Dec-2024 supply-chain-compromised 8.3.41–
                              # (works on Python 3.13)
 
 # ── Data & reporting ─────────────────────────────────────────────────────────
-pandas>=2.0.0
+pandas>=3.0.3
 reportlab>=4.0.0
 
 # ── HTTP / WebSocket ──────────────────────────────────────────────────────────
