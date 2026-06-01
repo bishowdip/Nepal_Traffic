@@ -10,7 +10,7 @@ aiosqlite>=0.20.0
 # ── Validation & config ───────────────────────────────────────────────────────
 pydantic>=2.10.0
 pydantic-settings>=2.6.0
-python-multipart>=0.0.18     # DoS in multipart parser (CVE-2024-53981)
+python-multipart>=0.0.30     # DoS in multipart parser (CVE-2024-53981)
 python-dotenv>=1.0.1
 
 # ── Image processing ──────────────────────────────────────────────────────────
